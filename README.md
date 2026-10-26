@@ -16,11 +16,11 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Role-based sign-in
+## Database-backed sign-in
 
-Copy `.env.example` to `.env.local` and set a unique `AUTH_SECRET` with at least 32 characters, plus separate employee and team lead email/password values. Sign-in uses those configured credentials. Employees are redirected to `/dashboard`; team leads are redirected to `/leads`. The Leads page is checked on the server and is only available to team leads.
+Set `DATABASE_URL` to the PostgreSQL database and set a unique `AUTH_SECRET` with at least 32 characters. Sign-in checks the email and password hash stored in the `users` table. To create the first admin, set `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in your shell and run `npm run db:create-admin`. The command only creates an admin when the database has none. Then sign in with that email and password; admins can create accounts and choose roles from the **Users** page. Passwords must be at least 8 characters and are stored as hashes. Demo accounts are not seeded.
 
-These environment-based accounts are suitable for a small deployment or local setup. For multiple employees, use a database-backed user store and password hashing rather than sharing a single role credential.
+To add images or videos to messages, run `npm run db:migrate` against the configured database. Attachments are stored in PostgreSQL and limited to 5 files and 15 MB total per message.
 
 You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
 

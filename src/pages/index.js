@@ -1,24 +1,33 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
-import { useState } from "react";
-import { FiHome,FiTarget,FiUsers,FiSettings,FiMenu   } from "react-icons/fi";
-import { TbReportAnalytics } from "react-icons/tb";
-import { SiPerforce } from "react-icons/si";
-import SignInPage from "./authentication/login";
-
-
+import { useEffect } from "react";
+import { useRouter } from "next/router";
+import { useAuth } from "@/context/AuthContext";
 
 export default function Home() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        if (user.role === "COMPLIANCE") {
+          router.replace("/compliance");
+        } else {
+          router.replace("/dashboard");
+        }
+      } else {
+        router.replace("/authentication/login");
+      }
+    }
+  }, [user, loading, router]);
 
   return (
-    <div
-      className={`fixed left-0 right-0 top-0 z-20 mt-24 items-center px-5 lg:left-64 text-black`}
-    >
-      <main className="">
-         <p className="text-lg font-semibold ">Main Dashboard Content</p>
-         
-      </main>
-      {/* <SignInPage /> */}
+    <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-8 h-8 border-4 border-[#ed272e] border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-slate-500 font-medium">
+          Redirecting to Compliance Dash…
+        </p>
+      </div>
     </div>
   );
 }

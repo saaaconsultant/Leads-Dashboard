@@ -1,11 +1,15 @@
-// import { clearSessionCookie } from "@/lib/auth";
+import { clearSessionCookie } from "@/lib/auth";
+import { ok, serverError } from "@/lib/responseFactory";
+import { withAuth } from "@/middleware/withAuth";
+import { withMethod } from "@/middleware/withMethod";
 
-// export default function handler(request, response) {
-//   if (request.method !== "POST") {
-//     response.setHeader("Allow", "POST");
-//     return response.status(405).json({ message: "Method not allowed." });
-//   }
+async function handler(req, res) {
+  try {
+    res.setHeader("Set-Cookie", clearSessionCookie());
+    return ok(res, { message: "Logged out." });
+  } catch (err) {
+    return serverError(res, err);
+  }
+}
 
-//   response.setHeader("Set-Cookie", clearSessionCookie());
-//   return response.redirect(303, "/");
-// }
+export default withMethod("POST", withAuth(handler));

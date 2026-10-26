@@ -1,80 +1,131 @@
-// import { createHmac, timingSafeEqual } from "node:crypto";
+import {
+  createHmac,
+  timingSafeEqual,
+  randomBytes,
+  scryptSync,
+} from "node:crypto";
 
-// export const SESSION_COOKIE = "zoho_session";
-// const SESSION_DURATION = 60 * 60 * 8;
-// const validRoles = ["employee", "teamLead"];
+export const SESSION_COOKIE = "compliance_session";
+const SESSION_DURATION = 60 * 60 * 8;
 
-// function getSecret() {
-//   const secret = process.env.AUTH_SECRET;
-//   if (!secret || secret.length < 32) {
-//     throw new Error("AUTH_SECRET must contain at least 32 characters.");
-//   }
-//   return secret;
-// }
+function getSecret() {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error("AUTH_SECRET env var must be at least 32 characters.");
+  }
+  return secret;
+}
 
-// function sign(value) {
-//   return createHmac("sha256", getSecret()).update(value).digest("base64url");
-// }
+function sign(value) {
+  return createHmac("sha256", getSecret()).update(value).digest("base64url");
+}
 
-// export function authenticateCredentials({ email, password, role }) {
-//   if (!validRoles.includes(role) || !email || !password) return null;
+export function hashPassword(password) {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
 
-//   const prefix = role === "teamLead" ? "TEAM_LEAD" : "EMPLOYEE";
-//   const configuredEmail = process.env[`${prefix}_EMAIL`];
-//   const configuredPassword = process.env[`${prefix}_PASSWORD`];
-//   if (!configuredEmail || !configuredPassword) return null;
+export function verifyPassword(password, stored) {
+  const [salt, storedHash] = stored.split(":");
+  if (!salt || !storedHash) return false;
+  const attemptHash = scryptSync(password, salt, 64);
+  const storedBuf = Buffer.from(storedHash, "hex");
+  if (attemptHash.length !== storedBuf.length) return false;
+  return timingSafeEqual(attemptHash, storedBuf);
+}
 
-//   const emailMatches = email.trim().toLowerCase() === configuredEmail.trim().toLowerCase();
-//   const passwordMatches = timingSafeEqual(
-//     createHmac("sha256", "zoho-auth-comparison").update(password).digest(),
-//     createHmac("sha256", "zoho-auth-comparison").update(configuredPassword).digest(),
-//   );
+export function createSessionToken(user) {
+  const payload = Buffer.from(
+    JSON.stringify({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      expiresAt: Date.now() + SESSION_DURATION * 1000,
+    }),
+  ).toString("base64url");
 
-//   return emailMatches && passwordMatches
-//     ? { email: configuredEmail.trim(), role }
-//     : null;
-// }
+  return `${payload}.${sign(payload)}`;
+}
 
-// export function createSessionToken(user) {
-//   const payload = Buffer.from(
-//     JSON.stringify({ ...user, expiresAt: Date.now() + SESSION_DURATION * 1000 }),
-//   ).toString("base64url");
-//   return `${payload}.${sign(payload)}`;
-// }
+export function verifySessionToken(token) {
+  try {
+    const [payload, signature] = token.split(".");
+    if (!payload || !signature) return null;
 
-// export function getSessionFromRequest(request) {
-//   const cookies = request.headers.cookie || "";
-//   const encodedCookie = cookies
-//     .split(";")
-//     .map((part) => part.trim())
-//     .find((part) => part.startsWith(`${SESSION_COOKIE}=`))
-//     ?.slice(SESSION_COOKIE.length + 1);
+    const expected = Buffer.from(sign(payload));
+    const received = Buffer.from(signature);
+    if (
+      expected.length !== received.length ||
+      !timingSafeEqual(expected, received)
+    ) {
+      return null;
+    }
 
-//   if (!encodedCookie) return null;
+    const session = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    );
+    if (!session.id || !session.role || session.expiresAt <= Date.now())
+      return null;
 
-//   try {
-//     const token = decodeURIComponent(encodedCookie);
-//     const [payload, signature] = token.split(".");
-//     if (!payload || !signature) return null;
+    return {
+      id: session.id,
+      email: session.email,
+      name: session.name,
+      role: session.role,
+    };
+  } catch {
+    return null;
+  }
+}
 
-//     const expected = Buffer.from(sign(payload));
-//     const received = Buffer.from(signature);
-//     if (expected.length !== received.length || !timingSafeEqual(expected, received)) return null;
+export function getSessionFromRequest(request) {
+  const cookies = request.headers.cookie || "";
+  const encoded = cookies
+    .split(";")
+    .map((p) => p.trim())
+    .find((p) => p.startsWith(`${SESSION_COOKIE}=`))
+    ?.slice(SESSION_COOKIE.length + 1);
 
-//     const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-//     if (!validRoles.includes(session.role) || session.expiresAt <= Date.now()) return null;
-//     return { email: session.email, role: session.role };
-//   } catch {
-//     return null;
-//   }
-// }
+  if (!encoded) return null;
+  return verifySessionToken(decodeURIComponent(encoded));
+}
 
-// export function sessionCookie(token, maxAge = SESSION_DURATION) {
-//   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-//   return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`;
-// }
+export function sessionCookie(token, maxAge = SESSION_DURATION) {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+}
 
-// export function clearSessionCookie() {
-//   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-//   return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`;
-// }
+export function clearSessionCookie() {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`;
+}
+
+export const ROLES = {
+  EMPLOYEE: "EMPLOYEE",
+  COMPLIANCE: "COMPLIANCE",
+  TEAM_LEAD: "TEAM_LEAD",
+  ADMIN: "ADMIN",
+};
+
+export const ROLE_HIERARCHY = [
+  ROLES.EMPLOYEE,
+  ROLES.COMPLIANCE,
+  ROLES.TEAM_LEAD,
+  ROLES.ADMIN,
+];
+
+export function hasRole(role, allowed) {
+  return allowed.includes(role);
+}
+
+export function roleRedirect(role) {
+  const map = {
+    [ROLES.EMPLOYEE]: "/dashboard",
+    [ROLES.COMPLIANCE]: "/compliance",
+    [ROLES.TEAM_LEAD]: "/dashboard",
+    [ROLES.ADMIN]: "/dashboard",
+  };
+  return map[role] ?? "/dashboard";
+}

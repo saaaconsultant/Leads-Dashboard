@@ -1,28 +1,30 @@
-// import {
-//   authenticateCredentials,
-//   createSessionToken,
-//   sessionCookie,
-// } from "@/lib/auth";
+import { authService } from "@/services";
+import { createSessionToken, sessionCookie, roleRedirect } from "@/lib/auth";
+import { ok, error, serverError } from "@/lib/responseFactory";
+import { withMethod } from "@/middleware/withMethod";
 
-// export default function handler(request, response) {
-//   if (request.method !== "POST") {
-//     response.setHeader("Allow", "POST");
-//     return response.status(405).json({ message: "Method not allowed." });
-//   }
+async function handler(req, res) {
+  const { email, password } = req.body ?? {};
 
-//   try {
-//     const user = authenticateCredentials(request.body || {});
-//     if (!user) {
-//       return response.status(401).json({ message: "Email, password, or role is incorrect." });
-//     }
+  try {
+    const user = await authService.login({ email, password });
+    const token = createSessionToken(user);
+    res.setHeader("Set-Cookie", sessionCookie(token));
+    return ok(res, {
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+      },
+      redirectTo: roleRedirect(user.role),
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      return error(res, err.message, 401);
+    }
+    return serverError(res, err);
+  }
+}
 
-//     const token = createSessionToken(user);
-//     const remember = request.body.remember === true;
-//     response.setHeader("Set-Cookie", sessionCookie(token, remember ? 60 * 60 * 24 * 30 : undefined));
-//     return response.status(200).json({
-//       redirectTo: user.role === "teamLead" ? "/leads" : "/dashboard",
-//     });
-//   } catch (error) {
-//     return response.status(500).json({ message: "Authentication is not configured correctly." });
-//   }
-// }
+export default withMethod("POST", handler);

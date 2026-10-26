@@ -1,0 +1,106 @@
+// Prisma Schema — Compliance Dash
+// Social Media DM Management with Compliance Review Workflow
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+enum Role {
+  EMPLOYEE   
+  COMPLIANCE  
+  TEAM_LEAD  
+  ADMIN     
+}
+
+enum DMStatus {
+  DRAFT      
+  PENDING_REVIEW 
+  APPROVED     
+  REJECTED     
+  SENT        
+}
+
+enum Platform {
+  INSTAGRAM
+  TWITTER
+  LINKEDIN
+  FACEBOOK
+  WHATSAPP
+}
+
+enum Decision {
+  APPROVED
+  REJECTED
+}
+
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(EMPLOYEE)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  dms     DM[]     @relation("CreatedBy")
+  reviews Review[] @relation("ReviewedBy")
+
+  @@map("users")
+}
+
+model DM {
+  id          String   @id @default(cuid())
+  content     String
+  platform    Platform
+  recipient   String 
+  subject     String?  
+  status      DMStatus @default(DRAFT)
+  submittedAt DateTime? 
+  approvedAt  DateTime? 
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdById String
+  createdBy   User     @relation("CreatedBy", fields: [createdById], references: [id])
+  reviews     Review[]
+  media       DMMedia[]
+
+  @@map("dms")
+}
+
+model DMMedia {
+  id        String   @id @default(cuid())
+  fileName  String
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+  dmId      String
+  dm        DM       @relation(fields: [dmId], references: [id], onDelete: Cascade)
+
+  @@map("dm_media")
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  decision   Decision
+  notes      String? 
+  createdAt  DateTime @default(now())
+
+  dmId       String
+  dm         DM       @relation(fields: [dmId], references: [id], onDelete: Cascade)
+
+  reviewerId String
+  reviewer   User     @relation("ReviewedBy", fields: [reviewerId], references: [id])
+
+  @@map("reviews")
+}
